@@ -12,6 +12,7 @@
     "require": {
         "php": ">=5.5",
         "php-http/client-implementation": "^1.0",
+        "php-http/async-client-implementation": "^1.0",
         "php-http/discovery": "^1.0",
         "psr/http-message": "^1.0"
     },
