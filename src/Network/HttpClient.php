@@ -2,14 +2,16 @@
 
 namespace TheIconic\Tracking\GoogleAnalytics\Network;
 
-use Http\Client\HttpAsyncClient;
-use Http\Discovery\HttpAsyncClientDiscovery;
+
 use Http\Discovery\MessageFactoryDiscovery;
-use Http\Message\RequestFactory;
-use Http\Promise\Promise;
+use TheIconic\Tracking\GoogleAnalytics\AnalyticsResponse;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
-use TheIconic\Tracking\GoogleAnalytics\AnalyticsResponse;
+use Http\Client\HttpAsyncClient;
+use Http\Discovery\HttpAsyncClientDiscovery;
+use Http\Discovery\Psr17FactoryDiscovery;
+use Http\Message\RequestFactory;
+use Http\Promise\Promise;
 
 /**
  * Class HttpClient
@@ -25,6 +27,12 @@ class HttpClient
         'THE ICONIC GA Measurement Protocol PHP Client (https://github.com/theiconic/php-ga-measurement-protocol)';
 
     /**
+     * Timeout in seconds for the request connection and actual request execution.
+     * Using the same value you can find in Google's PHP Client.
+     */
+    const REQUEST_TIMEOUT_SECONDS = 100;
+
+    /**
      * HTTP client.
      *
      * @var HttpAsyncClient
@@ -32,8 +40,6 @@ class HttpClient
     private $client;
 
     /**
-     * HTTP request factory.
-     *
      * @var RequestFactory
      */
     private $requestFactory = null;
@@ -77,19 +83,17 @@ class HttpClient
     /**
      * Sets HTTP request factory.
      *
-     * @param RequestFactory $factory
+     * @param $requestFactory
      *
      * @internal
      */
-    public function setRequestFactory(RequestFactory $factory)
+    public function setRequestFactory($requestFactory)
     {
-        $this->requestFactory = $factory;
+        $this->requestFactory = $requestFactory;
     }
 
     /**
-     * Gets HTTP request factory for internal class use.
-     *
-     * @return RequestFactory
+     * @return RequestFactory|null
      *
      * @throws \Http\Discovery\Exception\NotFoundException
      */
@@ -107,13 +111,13 @@ class HttpClient
      *
      * @internal
      * @param string $url
-     * @param boolean $nonBlocking
+     * @param array $options
      * @return AnalyticsResponse
      *
      * @throws \Exception If processing the request is impossible (eg. bad configuration).
      * @throws \Http\Discovery\Exception\NotFoundException
      */
-    public function post($url, $nonBlocking = false)
+    public function post($url, array $options = [])
     {
         $request = $this->getRequestFactory()->createRequest(
             'GET',
@@ -121,9 +125,40 @@ class HttpClient
             ['User-Agent' => self::PHP_GA_MEASUREMENT_PROTOCOL_USER_AGENT]
         );
 
+        //return $this->getClient()->sendAsyncRequest($request, $options);
+
+        return $this->sendRequest($request, $options);
+    }
+
+    /**
+     * Sends batch request to Google Analytics.
+     *
+     * @internal
+     * @param string $url
+     * @param array $batchUrls
+     * @param array $options
+     * @return AnalyticsResponse
+     */
+    public function batch($url, array $batchUrls, array $options = [])
+    {
+        $body = implode(PHP_EOL, $batchUrls);
+
+        $request = $this->getRequestFactory()->createReques(
+            'POST',
+            $url,
+            ['User-Agent' => self::PHP_GA_MEASUREMENT_PROTOCOL_USER_AGENT],
+            $body
+        );
+
+        return $this->sendRequest($request, $options);
+    }
+
+    private function sendRequest($request, array $options = [])
+    {
+        $opts = $this->parseOptions($options);
         $response = $this->getClient()->sendAsyncRequest($request);
 
-        if ($nonBlocking) {
+        if ($opts['async']) {
             self::$promises[] = $response;
         } else {
             $response = $response->wait();
@@ -133,10 +168,39 @@ class HttpClient
     }
 
     /**
+     * Parse the given options and fill missing fields with default values.
+     *
+     * @param array $options
+     * @return array
+     */
+    private function parseOptions(array $options)
+    {
+        $defaultOptions = [
+            'timeout' => static::REQUEST_TIMEOUT_SECONDS,
+            'async' => false,
+        ];
+
+        $opts = [];
+        foreach ($defaultOptions as $option => $value) {
+            $opts[$option] = isset($options[$option]) ? $options[$option] : $defaultOptions[$option];
+        }
+
+        if (!is_int($opts['timeout']) || $opts['timeout'] <= 0) {
+            throw new \UnexpectedValueException('The timeout must be an integer with a value greater than 0');
+        }
+
+        if (!is_bool($opts['async'])) {
+            throw new \UnexpectedValueException('The async option must be boolean');
+        }
+
+        return $opts;
+    }
+
+    /**
      * Creates an analytics response object.
      *
      * @param RequestInterface $request
-     * @param ResponseInterface|Promise $response
+     * @param ResponseInterface|PromiseInterface $response
      * @return AnalyticsResponse
      */
     protected function getAnalyticsResponse(RequestInterface $request, $response)

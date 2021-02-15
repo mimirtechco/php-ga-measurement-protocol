@@ -2,9 +2,9 @@
 
 namespace TheIconic\Tracking\GoogleAnalytics;
 
-use Http\Promise\Promise;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Http\Promise\Promise;
 
 /**
  * Class AnalyticsResponse
@@ -41,25 +41,18 @@ class AnalyticsResponse implements AnalyticsResponseInterface
      *
      * @param RequestInterface $request
      * @param ResponseInterface|Promise $response
-     *
-     * @throws \InvalidArgumentException
-     * @throws \RuntimeException
      */
     public function __construct(RequestInterface $request, $response)
     {
         if ($response instanceof ResponseInterface) {
             $this->httpStatusCode = $response->getStatusCode();
-            $this->responseBody = (string) $response->getBody();
+            $this->responseBody = $response->getBody();
         } elseif ($response instanceof Promise) {
             $this->httpStatusCode = null;
             $this->responseBody = null;
         } else {
             throw new \InvalidArgumentException(
-                sprintf(
-                    'Second constructor argument "response" must be instance of %s or %s',
-                    RequestInterface::class,
-                    Promise::class
-                )
+                'Second constructor argument "response" must be instance of ResponseInterface or PromiseInterface'
             );
         }
 
