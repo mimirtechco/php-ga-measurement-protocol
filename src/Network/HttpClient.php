@@ -13,6 +13,9 @@ use Http\Discovery\Psr17FactoryDiscovery;
 use Http\Message\RequestFactory;
 use Http\Promise\Promise;
 
+use React\Http\Browser;
+use React\EventLoop\Factory;
+
 /**
  * Class HttpClient
  *
@@ -35,12 +38,12 @@ class HttpClient
     /**
      * HTTP client.
      *
-     * @var HttpAsyncClient
+     * @var Browser
      */
     private $client;
 
     /**
-     * @var RequestFactory
+     * @var Factory
      */
     private $requestFactory = null;
 
@@ -55,9 +58,9 @@ class HttpClient
      * Sets HTTP client.
      *
      * @internal
-     * @param HttpAsyncClient $client
+     * @param Browser $client
      */
-    public function setClient(HttpAsyncClient $client)
+    public function setClient(Browser $client)
     {
         $this->client = $client;
     }
@@ -65,7 +68,7 @@ class HttpClient
     /**
      * Gets HTTP client for internal class use.
      *
-     * @return HttpAsyncClient
+     * @return Browser
      *
      * @throws \Http\Discovery\Exception\NotFoundException
      */
@@ -73,7 +76,8 @@ class HttpClient
     {
         if ($this->client === null) {
             // @codeCoverageIgnoreStart
-            $this->setClient(HttpAsyncClientDiscovery::find());
+            //$loop = \React\EventLoop\Factory::create();
+            $this->setClient(new Browser($this->getRequestFactory()));
         }
         // @codeCoverageIgnoreEnd
 
@@ -93,14 +97,14 @@ class HttpClient
     }
 
     /**
-     * @return RequestFactory|null
+     * @return Factory|null
      *
      * @throws \Http\Discovery\Exception\NotFoundException
      */
     private function getRequestFactory()
     {
         if (null === $this->requestFactory) {
-            $this->setRequestFactory(MessageFactoryDiscovery::find());
+            $this->setRequestFactory(Factory::create());
         }
 
         return $this->requestFactory;
@@ -119,15 +123,8 @@ class HttpClient
      */
     public function post($url, array $options = [])
     {
-        $request = $this->getRequestFactory()->createRequest(
-            'GET',
-            $url,
-            ['User-Agent' => self::PHP_GA_MEASUREMENT_PROTOCOL_USER_AGENT]
-        );
 
-        //return $this->getClient()->sendAsyncRequest($request, $options);
-
-        return $this->sendRequest($request, $options);
+        return $this->sendRequest($url, $options);
     }
 
     /**
@@ -156,15 +153,13 @@ class HttpClient
     private function sendRequest($request, array $options = [])
     {
         $opts = $this->parseOptions($options);
-        $response = $this->getClient()->sendAsyncRequest($request);
+        $response = $this->getClient()->get( $request )->then(
+          function ($request, ResponseInterface $response) {
+            return $this->getAnalyticsResponse($request, $response);
+          });
 
-        if ($opts['async']) {
-            self::$promises[] = $response;
-        } else {
-            $response = $response->wait();
-        }
+          $this->getRequestFactory()->run();
 
-        return $this->getAnalyticsResponse($request, $response);
     }
 
     /**
